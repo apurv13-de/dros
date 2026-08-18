@@ -1,0 +1,1109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#F8FBFD">
+<meta name="format-detection" content="telephone=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="DROS">
+<title>DROS · Disaster Response Operations System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Outfit:wght@400;500;600;700&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root{
+    --bg:#F6F8FB;
+    --surface:#FFFFFF;
+    --surface-2:#F3F6F9;
+    --border:#E4E9EF;
+    --text:#0E1620;
+    --text-dim:#566170;
+    --text-faint:#8E9AAB;
+    --river:#1F7AA8;
+    --river-deep:#14587C;
+    --river-light:#E4F3FA;
+    --alert:#E2524C;
+    --alert-light:#FDF0EF;
+    --amber:#D88920;
+    --amber-light:#FBF3E4;
+    --green:#2A9A68;
+    --green-light:#E7F6EF;
+    --radius:18px;
+    --shadow:0 1px 2px rgba(16,24,40,.04), 0 12px 32px rgba(16,24,40,.05);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html{scroll-behavior:smooth;-webkit-text-size-adjust:100%;text-size-adjust:100%;}
+  html,body{min-height:100%;min-height:100dvh;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Plus Jakarta Sans',system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    position:relative;
+    overflow-x:hidden;
+    padding-left:env(safe-area-inset-left);
+    padding-right:env(safe-area-inset-right);
+  }
+
+  /* ---------- modern animated mesh ---------- */
+  .bg-anim{position:fixed;inset:0;z-index:-2;overflow:hidden;background:#F8FBFD;}
+  .mesh{
+    position:absolute;inset:-20%;
+    background:
+      radial-gradient(42% 38% at 12% 18%, rgba(90,190,230,.42), transparent 60%),
+      radial-gradient(38% 36% at 88% 12%, rgba(164,214,186,.40), transparent 62%),
+      radial-gradient(40% 40% at 78% 82%, rgba(248,210,150,.36), transparent 60%),
+      radial-gradient(36% 34% at 18% 86%, rgba(186,168,232,.32), transparent 62%),
+      radial-gradient(28% 28% at 50% 48%, rgba(255,255,255,.9), transparent 70%);
+    filter:blur(8px);
+    animation:meshShift 22s ease-in-out infinite alternate;
+  }
+  .grid-overlay{
+    position:absolute;inset:0;
+    background-image:
+      linear-gradient(rgba(20,40,60,.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(20,40,60,.035) 1px, transparent 1px);
+    background-size:48px 48px;
+    mask-image:radial-gradient(ellipse at 50% 30%, #000 30%, transparent 75%);
+    animation:gridDrift 40s linear infinite;
+  }
+  .orb{position:absolute;border-radius:50%;filter:blur(40px);opacity:.55;mix-blend-mode:multiply;}
+  .orb1{width:280px;height:280px;background:#8FD0EA;top:8%;left:8%;animation:orbA 16s ease-in-out infinite;}
+  .orb2{width:240px;height:240px;background:#B8E4C8;bottom:10%;right:8%;animation:orbB 19s ease-in-out infinite;}
+  .orb3{width:200px;height:200px;background:#F3D39A;top:42%;right:28%;animation:orbC 21s ease-in-out infinite;}
+  .ripple{
+    position:absolute;left:50%;top:18%;width:120px;height:120px;margin:-60px 0 0 -60px;
+    border:1px solid rgba(31,122,168,.18);border-radius:50%;
+    animation:ripple 8s ease-out infinite;
+  }
+  .ripple:nth-child(2){animation-delay:2.6s;}
+  .ripple:nth-child(3){animation-delay:5.2s;}
+  .wave{position:absolute;bottom:-8px;left:0;width:200%;height:150px;opacity:.28;pointer-events:none;}
+  .wave svg{width:100%;height:100%;display:block;}
+  .wave.w1{animation:waveX 16s linear infinite;}
+  .wave.w2{opacity:.16;animation:waveX 24s linear infinite reverse;bottom:-18px;}
+  @keyframes meshShift{from{transform:translate(0,0) scale(1);}to{transform:translate(-4%,3%) scale(1.08);}}
+  @keyframes gridDrift{from{background-position:0 0;}to{background-position:48px 48px;}}
+  @keyframes orbA{0%,100%{transform:translate(0,0);}50%{transform:translate(70px,40px);}}
+  @keyframes orbB{0%,100%{transform:translate(0,0);}50%{transform:translate(-50px,-60px);}}
+  @keyframes orbC{0%,100%{transform:translate(0,0) scale(1);}50%{transform:translate(-40px,50px) scale(1.15);}}
+  @keyframes ripple{0%{transform:scale(.4);opacity:.5;}100%{transform:scale(6);opacity:0;}}
+  @keyframes waveX{from{transform:translateX(0);}to{transform:translateX(-50%);}}
+  @media (prefers-reduced-motion: reduce){
+    .mesh,.orb,.wave,.grid-overlay,.ripple{animation:none !important;}
+  }
+
+  .topbar{
+    display:flex;justify-content:space-between;align-items:center;
+    padding:14px 28px;border-bottom:1px solid rgba(228,233,239,.8);
+    background:rgba(255,255,255,.88);backdrop-filter:blur(18px) saturate(1.2);-webkit-backdrop-filter:blur(18px) saturate(1.2);
+    position:sticky;top:0;z-index:50;flex-wrap:wrap;gap:10px;
+  }
+  .brand{display:flex;align-items:center;gap:12px;}
+  .brand-mark{
+    width:40px;height:40px;border-radius:13px;
+    background:linear-gradient(145deg,#1F7AA8,#6EC4E4);
+    display:flex;align-items:center;justify-content:center;color:#fff;
+    font-family:'Outfit';font-weight:700;font-size:15px;
+    box-shadow:0 10px 22px rgba(31,122,168,.28);
+  }
+  .brand-title{font-family:'Outfit',sans-serif;font-weight:650;font-size:16px;letter-spacing:-.03em;}
+  .brand-sub{font-size:11.5px;color:var(--text-faint);margin-top:2px;}
+  .nav-links{display:flex;gap:4px;}
+  .nav-links a{font-size:13px;font-weight:600;color:var(--text-dim);text-decoration:none;padding:8px 12px;border-radius:999px;}
+  .nav-links a:hover{background:#fff;color:var(--river);}
+  .savebar{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--text-faint);}
+  .savebar .dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 0 4px rgba(42,154,104,.14);animation:pulse 2s ease infinite;}
+  @keyframes pulse{50%{box-shadow:0 0 0 7px rgba(42,154,104,.04);}}
+
+  .hero{padding:56px 28px 18px;max-width:1140px;margin:0 auto;}
+  .kicker{
+    display:inline-flex;gap:8px;align-items:center;
+    font-size:11.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--river);background:rgba(255,255,255,.7);border:1px solid #D5EAF4;
+    padding:6px 12px;border-radius:999px;margin-bottom:18px;
+  }
+  .hero h1{
+    font-family:'Instrument Serif',serif;font-weight:400;
+    font-size:clamp(36px,5.6vw,62px);letter-spacing:-.03em;line-height:1.05;max-width:860px;
+  }
+  .hero h1 em{font-style:italic;background:linear-gradient(90deg,#14587C,#2A9A68);-webkit-background-clip:text;background-clip:text;color:transparent;}
+  .hero p{color:var(--text-dim);max-width:640px;margin-top:16px;font-size:16.5px;line-height:1.65;}
+  .hero-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:24px;}
+
+  .overview{max-width:1140px;margin:0 auto;padding:8px 28px;}
+  .stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;}
+  .stat{
+    background:rgba(255,255,255,.82);border:1px solid var(--border);border-radius:var(--radius);
+    padding:18px;box-shadow:var(--shadow);backdrop-filter:blur(10px);
+    transition:transform .2s, box-shadow .2s;
+  }
+  .stat:hover{transform:translateY(-3px);box-shadow:0 16px 36px rgba(16,24,40,.08);}
+  .stat .lbl{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--text-faint);}
+  .stat .val{font-family:'Outfit',sans-serif;font-size:30px;font-weight:650;letter-spacing:-.04em;margin-top:6px;}
+  .stat .hint{font-size:12px;color:var(--text-dim);margin-top:4px;}
+  .stat .bar{height:3px;border-radius:99px;background:#EEF2F6;margin-top:12px;overflow:hidden;}
+  .stat .bar i{display:block;height:100%;width:0;transition:width .8s cubic-bezier(.2,.8,.2,1);}
+  .feature-row{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:14px;}
+  .feat{background:rgba(255,255,255,.78);border:1px solid var(--border);border-radius:var(--radius);padding:18px;}
+  .feat-ico{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;background:var(--river-light);color:var(--river-deep);font-family:'Outfit';font-weight:700;margin-bottom:10px;}
+  .feat h3{font-family:'Outfit';font-size:15px;margin-bottom:6px;}
+  .feat p{font-size:13px;color:var(--text-dim);line-height:1.55;}
+
+  .tabstrip{display:flex;gap:6px;padding:20px 28px 0;max-width:1140px;margin:0 auto;flex-wrap:wrap;}
+  .tabbtn{
+    display:flex;align-items:center;gap:8px;font-weight:650;font-size:13.5px;
+    color:var(--text-dim);background:rgba(255,255,255,.85);border:1px solid var(--border);
+    border-radius:999px;padding:10px 18px;cursor:pointer;transition:.18s;
+  }
+  .tabbtn:hover{border-color:var(--river);color:var(--river);}
+  .tabbtn.active{background:var(--river);border-color:var(--river);color:#fff;box-shadow:0 10px 22px rgba(31,122,168,.28);}
+  .tabbtn .num{font-family:'IBM Plex Mono',monospace;font-size:11px;opacity:.7;}
+
+  .wrap{max-width:1140px;margin:0 auto;padding:22px 28px 56px;}
+  .panel{display:none;}
+  .panel.active{display:block;animation:fadein .35s ease;}
+  @keyframes fadein{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
+
+  .card{
+    background:rgba(255,255,255,.9);border:1px solid var(--border);border-radius:var(--radius);
+    padding:22px;margin-bottom:16px;box-shadow:var(--shadow);backdrop-filter:blur(10px);
+  }
+  .card h2{font-family:'Outfit';font-size:17px;font-weight:650;letter-spacing:-.02em;margin-bottom:4px;}
+  .card .desc{color:var(--text-faint);font-size:13.5px;margin-bottom:16px;line-height:1.55;}
+
+  label{display:block;font-size:12px;color:var(--text-dim);font-weight:650;margin-bottom:6px;}
+  input,select,textarea{
+    width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text);
+    padding:11px 12px;border-radius:12px;font-family:inherit;font-size:16px;
+    transition:.15s;max-width:100%;appearance:auto;-webkit-appearance:none;
+  }
+  select{-webkit-appearance:menulist;}
+  .table-wrap{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  textarea{min-height:76px;resize:vertical;}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--river);background:#fff;box-shadow:0 0 0 4px rgba(31,122,168,.12);}
+  .field{margin-bottom:14px;position:relative;}
+  .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;}
+  .grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;}
+
+  a.btn,button.btn{
+    font-family:inherit;font-weight:700;font-size:13.5px;
+    background:var(--river);color:#fff;border:1px solid var(--river);
+    padding:11px 18px;border-radius:12px;cursor:pointer;transition:.15s;
+    text-decoration:none;display:inline-block;line-height:1.2;text-align:center;
+    -webkit-tap-highlight-color:transparent;touch-action:manipulation;
+  }
+  button.btn{
+    font-family:inherit;font-weight:700;font-size:13.5px;
+    background:var(--river);color:#fff;border:1px solid var(--river);
+    padding:11px 18px;border-radius:12px;cursor:pointer;transition:.15s;
+  }
+  button.btn:hover{filter:brightness(1.06);box-shadow:0 10px 20px rgba(31,122,168,.22);}
+  button.btn:active{transform:scale(.98);}
+  button.btn:disabled{opacity:.55;cursor:not-allowed;box-shadow:none;}
+  a.btn.ghost,button.btn.ghost{background:#fff;color:var(--text-dim);border-color:var(--border);}
+  a.btn.ghost:hover,button.btn.ghost:hover{border-color:#9aa8b6;color:var(--text);filter:none;box-shadow:none;}
+  a.btn.sm,button.btn.sm{padding:6px 12px;font-size:12px;}
+
+  .suggest{
+    position:absolute;left:0;right:0;top:calc(100% - 6px);z-index:20;
+    background:#fff;border:1px solid var(--border);border-radius:12px;
+    box-shadow:0 16px 40px rgba(16,24,40,.12);max-height:240px;overflow:auto;display:none;
+  }
+  .suggest.open{display:block;}
+  .suggest button{
+    width:100%;text-align:left;background:none;border:0;padding:10px 12px;cursor:pointer;
+    font:inherit;font-size:13px;border-bottom:1px solid #F1F4F7;
+  }
+  .suggest button:hover,.suggest button.active{background:var(--river-light);}
+  .suggest .meta{display:block;font-size:11px;color:var(--text-faint);margin-top:2px;}
+  .place-ok{font-size:12px;color:var(--green);margin-top:6px;min-height:16px;}
+  .place-bad{color:var(--alert);}
+  .coords{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);}
+
+  .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px;}
+  .toolbar input{max-width:260px;margin:0;}
+
+  table{width:100%;border-collapse:collapse;font-size:13.5px;}
+  th{text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-faint);padding:8px 10px;border-bottom:1px solid var(--border);}
+  td{padding:12px 10px;border-bottom:1px solid var(--border);vertical-align:top;}
+  tr.crit td{background:var(--alert-light);}
+  tr.high td{background:var(--amber-light);}
+
+  .badge{display:inline-block;padding:4px 11px;border-radius:999px;font-size:11.5px;font-weight:700;}
+  .badge.CRITICAL{background:var(--alert-light);color:#B23A35;}
+  .badge.HIGH{background:var(--amber-light);color:#A66E1B;}
+  .badge.MEDIUM{background:var(--river-light);color:#1E5E7E;}
+  .badge.LOW{background:var(--green-light);color:#276B48;}
+
+  #graph-map{height:480px;border-radius:16px;overflow:hidden;border:1px solid var(--border);}
+  .nav-steps{max-height:280px;overflow:auto;margin-top:12px;}
+  .nav-step{display:grid;grid-template-columns:28px 1fr auto;gap:10px;align-items:start;padding:10px 4px;border-bottom:1px solid var(--border);font-size:13.5px;}
+  .nav-step:last-child{border-bottom:none;}
+  .nav-n{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-faint);padding-top:2px;}
+  .nav-km{font-size:12px;color:var(--text-faint);white-space:nowrap;}
+  .nav-banner{
+    display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;
+    background:var(--river-light);border:1px solid #D3EAF4;border-radius:12px;padding:12px 14px;margin-bottom:12px;
+  }
+  .leaflet-container{font-family:'Plus Jakarta Sans',sans-serif;}
+  .edge-tag{background:#fff;border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--text-dim);white-space:nowrap;}
+  .edge-tag.breached{border-color:var(--alert);color:#B23A35;}
+  .zone-pin{border-radius:50%;border:3px solid #fff;box-shadow:0 1px 4px rgba(16,24,40,.35);}
+  .route-glow{filter:drop-shadow(0 0 6px rgba(31,122,168,.65));}
+  .route-dash{stroke-dasharray:10 12;animation:dashmove 1.2s linear infinite;}
+  @keyframes dashmove{to{stroke-dashoffset:-22;}}
+
+  .log{background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:14px 16px;font-size:13.5px;color:var(--text-dim);max-height:340px;overflow-y:auto;}
+  .log div{padding:7px 0;border-bottom:1px dashed var(--border);}
+  .log div:last-child{border-bottom:none;}
+  .log .ok{color:var(--green);font-weight:700;}
+  .log .warn{color:var(--amber);font-weight:700;}
+  .log .crit{color:var(--alert);font-weight:700;}
+  .flexrow{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+  .checks{display:grid;gap:8px;}
+  .checks label{display:flex;align-items:center;gap:10px;font-size:13.5px;color:var(--text);font-weight:500;margin:0;cursor:pointer;}
+  .checks input{width:16px;height:16px;accent-color:var(--river);}
+
+  .toast{
+    position:fixed;bottom:22px;right:22px;z-index:80;
+    background:#121826;color:#fff;padding:12px 16px;border-radius:12px;
+    font-size:13.5px;box-shadow:0 12px 32px rgba(0,0,0,.2);
+    transform:translateY(16px);opacity:0;pointer-events:none;transition:.25s;
+  }
+  .toast.show{transform:none;opacity:1;}
+  footer{text-align:center;color:var(--text-faint);font-size:12.5px;padding:8px 28px 36px;max-width:1140px;margin:0 auto;line-height:1.7;}
+
+  @media(max-width:860px){.stat-grid,.feature-row{grid-template-columns:1fr 1fr;}}
+  @media(max-width:640px){
+    .topbar,.hero,.wrap,.overview,.tabstrip{padding-left:16px;padding-right:16px;}
+    .stat-grid,.feature-row{grid-template-columns:1fr;}
+    .nav-links{display:none;}
+  }
+</style>
+</head>
+<body>
+
+<div class="bg-anim">
+  <div class="mesh"></div>
+  <div class="grid-overlay"></div>
+  <div class="orb orb1"></div>
+  <div class="orb orb2"></div>
+  <div class="orb orb3"></div>
+  <div class="ripple"></div>
+  <div class="ripple"></div>
+  <div class="ripple"></div>
+  <div class="wave w1"><svg viewBox="0 0 1440 120" preserveAspectRatio="none"><path fill="#1F7AA8" d="M0,64 C240,120 480,8 720,48 C960,88 1200,16 1440,56 L1440,120 L0,120 Z"></path></svg></div>
+  <div class="wave w2"><svg viewBox="0 0 1440 120" preserveAspectRatio="none"><path fill="#6EC4E4" d="M0,80 C200,20 480,110 720,70 C960,30 1200,100 1440,60 L1440,120 L0,120 Z"></path></svg></div>
+</div>
+
+<div class="topbar">
+  <div class="brand">
+    <div class="brand-mark">DR</div>
+    <div>
+      <div class="brand-title">DROS</div>
+      <div class="brand-sub">Disaster Response Operations System · Assam</div>
+    </div>
+  </div>
+  <nav class="nav-links">
+    <a href="#overview">Overview</a>
+    <a href="#workspace">Workspace</a>
+  </nav>
+  <div class="savebar"><span class="dot" id="save-dot"></span><span id="save-label">not saved yet</span></div>
+</div>
+
+<section class="hero">
+  <div class="kicker">Multi-hazard desk · Assam</div>
+  <h1>One board for floods, quakes, storms — <em>who, how, what to send</em>.</h1>
+  <p>DROS is a disaster operations desk, not a flood-only tool. Tag the hazard, rank verified Assam places by need, draw the fastest open corridor, and share teams and assets fairly.</p>
+  <div class="hero-actions">
+    <button class="btn" onclick="document.getElementById('workspace').scrollIntoView()">Open workspace</button>
+    <button class="btn ghost" onclick="exportBrief()">Export situation brief</button>
+  </div>
+</section>
+
+<section class="overview" id="overview">
+  <div class="stat-grid">
+    <div class="stat"><div class="lbl">Places tracked</div><div class="val" id="st-zones">0</div><div class="hint">Verified gazetteer pins</div><div class="bar"><i id="bar-zones" style="background:var(--river)"></i></div></div>
+    <div class="stat"><div class="lbl">People affected</div><div class="val" id="st-people">0</div><div class="hint">Sum of reported caseloads</div><div class="bar"><i id="bar-people" style="background:var(--amber)"></i></div></div>
+    <div class="stat"><div class="lbl">Critical now</div><div class="val" id="st-crit">0</div><div class="hint" id="st-top">Highest-need district</div><div class="bar"><i id="bar-crit" style="background:var(--alert)"></i></div></div>
+    <div class="stat"><div class="lbl">Roads blocked</div><div class="val" id="st-block">0</div><div class="hint" id="st-roads">Open corridors</div><div class="bar"><i id="bar-block" style="background:var(--green)"></i></div></div>
+  </div>
+  <div class="feature-row">
+    <div class="feat"><div class="feat-ico">1</div><h3>Any hazard</h3><p>Flood, earthquake, landslide, storm, fire or industrial — mark the type and intensity per place.</p></div>
+    <div class="feat"><div class="feat-ico">2</div><h3>See the route</h3><p>Choose From / To and the corridor lights up. Click a road to mark it unsafe after any disaster.</p></div>
+    <div class="feat"><div class="feat-ico">3</div><h3>Fair dispatch</h3><p>Helicopters, boats, ambulances and SDRF teams go to the most urgent places first.</p></div>
+  </div>
+</section>
+
+<div class="tabstrip" id="workspace">
+  <button class="tabbtn active" data-tab="severity"><span class="num">1</span> Severity</button>
+  <button class="tabbtn" data-tab="routing"><span class="num">2</span> Live routing</button>
+  <button class="tabbtn" data-tab="resources"><span class="num">3</span> Resources</button>
+  <button class="tabbtn" data-tab="ops"><span class="num">4</span> Field notes</button>
+</div>
+
+<div class="wrap">
+  <div class="panel active" id="panel-severity">
+    <div class="card">
+      <h2>Add a verified place</h2>
+      <div class="desc">Select an Assam district or town, then set the disaster type and intensity. Score = (people × 0.5) + (hazard intensity × 0.2) + (injured × 0.3).</div>
+      <div class="grid2">
+        <div class="field" style="grid-column:1/-1">
+          <label>Assam place</label>
+          <select id="pq-place"></select>
+          <div class="place-ok" id="place-status">Choose a district or town.</div>
+        </div>
+        <div class="field"><label>Disaster type</label>
+          <select id="pq-hazard">
+            <option value="Flood">Flood</option>
+            <option value="Earthquake">Earthquake</option>
+            <option value="Landslide">Landslide</option>
+            <option value="Storm">Storm / cyclone</option>
+            <option value="Fire">Fire</option>
+            <option value="Industrial">Industrial accident</option>
+            <option value="Drought">Drought</option>
+          </select>
+        </div>
+        <div class="field"><label>People affected</label><input id="pq-p" type="number" min="0" value="10000"></div>
+        <div class="field"><label>Hazard intensity (1–10)</label><input id="pq-f" type="number" min="1" max="10" value="5"></div>
+        <div class="field"><label>Injured (est.)</label><input id="pq-i" type="number" min="0" value="50"></div>
+      </div>
+      <div class="flexrow">
+        <button class="btn" id="add-btn" onclick="addZone()" disabled>Add verified place</button>
+        <button class="btn ghost" onclick="resetZones()">Reset sample incident</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Ranked by need</h2>
+      <div class="toolbar">
+        <input id="pq-search" placeholder="Filter…" oninput="renderPriorityQueue()">
+        <button class="btn ghost sm" onclick="exportBrief()">Copy brief</button>
+      </div>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>#</th><th>Place</th><th>Hazard</th><th>Coords</th><th>Affected</th><th>Intensity</th><th>Injured</th><th>Score</th><th>Priority</th><th></th></tr></thead>
+        <tbody id="pq-table"></tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-routing">
+    <div class="card">
+      <h2>Roads and rescue base</h2>
+      <div class="desc">Click a corridor to mark it unsafe (flooded, blocked, damaged). Changing From / To draws the live path.</div>
+      <div id="graph-map"></div>
+    </div>
+    <div class="card">
+      <h2>Find a route & navigate</h2>
+      <div class="desc">Fastest open corridor on your network, then real-road directions on the map.</div>
+      <div class="grid3">
+        <div class="field"><label>From</label><select id="rt-from"></select></div>
+        <div class="field"><label>To</label><select id="rt-to"></select></div>
+        <div class="field" style="align-self:end"><button class="btn" style="width:100%" onclick="runDijkstra(true)">Find & navigate</button></div>
+      </div>
+      <div id="rt-result" class="log">Pick two places — the map and turn list update together.</div>
+      <div id="nav-panel" style="display:none;margin-top:14px">
+        <div class="nav-banner">
+          <div>
+            <div class="ok" style="font-weight:700;color:var(--river-deep)" id="nav-summary">—</div>
+            <div class="coords" id="nav-via"></div>
+          </div>
+          <div class="flexrow">
+            <a class="btn sm" id="gmaps-link" href="#" target="_blank" rel="noopener noreferrer">Open in Google Maps</a>
+            <button class="btn ghost sm" type="button" onclick="copyNavLink()">Copy maps link</button>
+          </div>
+        </div>
+        <div id="nav-block-hint" class="place-ok" style="margin:0 0 10px"></div>
+        <input id="nav-url" readonly style="margin-bottom:10px;font-size:12px;cursor:text" onclick="this.select()">
+        <div class="nav-steps" id="nav-steps"></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Add a road between verified places</h2>
+      <div class="grid3">
+        <div class="field"><label>From</label><select id="rd-from"></select></div>
+        <div class="field"><label>To</label><select id="rd-to"></select></div>
+        <div class="field"><label>Travel time (min)</label><input id="rd-w" type="number" min="1" value="10"></div>
+      </div>
+      <button class="btn" onclick="addRoad()">Add road</button>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-resources">
+    <div class="card">
+      <h2>What's available at base</h2>
+      <div class="desc">Most urgent place gets the next asset first.</div>
+      <div class="grid3">
+        <div class="field"><label>Boats</label><input id="res-boats" type="number" min="0" value="4"></div>
+        <div class="field"><label>Helicopters</label><input id="res-heli" type="number" min="0" value="2"></div>
+        <div class="field"><label>Ambulances</label><input id="res-amb" type="number" min="0" value="5"></div>
+        <div class="field"><label>SDRF teams</label><input id="res-sdrf" type="number" min="0" value="3"></div>
+      </div>
+      <div class="flexrow">
+        <button class="btn" onclick="runAllocation()">Assign resources</button>
+        <button class="btn ghost" onclick="exportAlloc()">Copy assignment</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Assignment plan</h2>
+      <div id="alloc-log" class="log">Assign resources to see the dispatch order.</div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-ops">
+    <div class="card">
+      <h2>Shift checklist</h2>
+      <div class="desc">Ticks stay in this browser.</div>
+      <div class="checks" id="ops-checks"></div>
+    </div>
+    <div class="card">
+      <h2>Duty note</h2>
+      <textarea id="ops-note" placeholder="e.g. Landslide on NH-27. Aftershocks near Tezpur. Relief camp at Nagaon full…"></textarea>
+    </div>
+  </div>
+</div>
+
+<footer>Places: Assam district HQs and towns (gazetteer). Routes: shortest open corridor on your network, drawn on the map. Decision support — not a replacement for field command.</footer>
+<noscript><p style="padding:24px;text-align:center;font-family:sans-serif">DROS needs JavaScript. Turn it on in your browser settings and reload.</p></noscript>
+<div class="toast" id="toast"></div>
+
+<script>
+/* Official Assam places — district HQs + key towns, real lat/lng */
+const GAZETTEER = [
+  {id:'guwahati', name:'Guwahati', kind:'City / Kamrup Metro', lat:26.1445, lng:91.7362},
+  {id:'base', name:'Base (Guwahati)', kind:'Rescue base', lat:26.1445, lng:91.7362, hidden:true},
+  {id:'baksa', name:'Baksa', kind:'District HQ · Mushalpur', lat:26.698, lng:91.351},
+  {id:'bajali', name:'Bajali', kind:'District HQ · Pathsala', lat:26.498, lng:91.178},
+  {id:'barpeta', name:'Barpeta', kind:'District HQ', lat:26.3228, lng:91.0062},
+  {id:'biswanath', name:'Biswanath', kind:'District HQ', lat:26.725, lng:93.152},
+  {id:'bongaigaon', name:'Bongaigaon', kind:'District HQ', lat:26.479, lng:90.558},
+  {id:'cachar', name:'Cachar', kind:'District HQ · Silchar', lat:24.8333, lng:92.7789},
+  {id:'silchar', name:'Silchar', kind:'Town · Cachar', lat:24.8333, lng:92.7789},
+  {id:'charaideo', name:'Charaideo', kind:'District HQ · Sonari', lat:27.036, lng:94.914},
+  {id:'chirang', name:'Chirang', kind:'District HQ · Kajalgaon', lat:26.525, lng:90.490},
+  {id:'darrang', name:'Darrang', kind:'District HQ · Mangaldoi', lat:26.446, lng:92.030},
+  {id:'dhemaji', name:'Dhemaji', kind:'District HQ', lat:27.4833, lng:94.5833},
+  {id:'dhubri', name:'Dhubri', kind:'District HQ', lat:26.020, lng:89.985},
+  {id:'dibrugarh', name:'Dibrugarh', kind:'District HQ', lat:27.4728, lng:94.9120},
+  {id:'dima-hasao', name:'Dima Hasao', kind:'District HQ · Haflong', lat:25.345, lng:93.017},
+  {id:'goalpara', name:'Goalpara', kind:'District HQ', lat:26.170, lng:90.626},
+  {id:'golaghat', name:'Golaghat', kind:'District HQ', lat:26.522, lng:93.969},
+  {id:'hailakandi', name:'Hailakandi', kind:'District HQ', lat:24.684, lng:92.564},
+  {id:'hojai', name:'Hojai', kind:'District HQ', lat:26.0031, lng:92.8558},
+  {id:'jorhat', name:'Jorhat', kind:'District HQ', lat:26.7570, lng:94.2030},
+  {id:'kamrup', name:'Kamrup', kind:'District HQ · Amingaon', lat:26.183, lng:91.441},
+  {id:'kamrup-metro', name:'Kamrup Metropolitan', kind:'District', lat:26.1445, lng:91.7362},
+  {id:'karbi-anglong', name:'Karbi Anglong', kind:'District HQ · Diphu', lat:25.843, lng:93.431},
+  {id:'diphu', name:'Diphu', kind:'Town · Karbi Anglong', lat:25.843, lng:93.431},
+  {id:'karimganj', name:'Karimganj', kind:'District HQ', lat:24.869, lng:92.360},
+  {id:'kokrajhar', name:'Kokrajhar', kind:'District HQ', lat:26.401, lng:90.273},
+  {id:'lakhimpur', name:'Lakhimpur', kind:'District HQ · North Lakhimpur', lat:27.238, lng:94.104},
+  {id:'majuli', name:'Majuli', kind:'District HQ · Garamur', lat:26.9526, lng:94.1656},
+  {id:'morigaon', name:'Morigaon', kind:'District HQ', lat:26.252, lng:92.342},
+  {id:'nagaon', name:'Nagaon', kind:'District HQ', lat:26.3479, lng:92.6835},
+  {id:'nalbari', name:'Nalbari', kind:'District HQ', lat:26.445, lng:91.441},
+  {id:'sivasagar', name:'Sivasagar', kind:'District HQ', lat:26.984, lng:94.638},
+  {id:'sonitpur', name:'Sonitpur', kind:'District HQ · Tezpur', lat:26.633, lng:92.800},
+  {id:'tezpur', name:'Tezpur', kind:'Town · Sonitpur', lat:26.633, lng:92.800},
+  {id:'south-salmara', name:'South Salmara-Mankachar', kind:'District HQ', lat:25.850, lng:89.900},
+  {id:'tamulpur', name:'Tamulpur', kind:'District HQ', lat:26.640, lng:91.580},
+  {id:'tinsukia', name:'Tinsukia', kind:'District HQ', lat:27.492, lng:95.347},
+  {id:'udalguri', name:'Udalguri', kind:'District HQ', lat:26.746, lng:92.096},
+  {id:'west-karbi-anglong', name:'West Karbi Anglong', kind:'District HQ · Hamren', lat:25.990, lng:92.570}
+];
+
+let zones = [];
+let nodes = {};
+let edges = [];
+let checks = [
+  {id:'c1', t:'Confirm hazard reports for top 3 places', on:false},
+  {id:'c2', t:'Verify fuel and kit at Guwahati base', on:false},
+  {id:'c3', t:'Share unsafe-road list with SDRF / NDRF', on:false},
+  {id:'c4', t:'Call relief camp leads in critical zones', on:false},
+];
+let dutyNote = '';
+let lastAllocText = '';
+let selectedPlace = null;
+let activePath = [];
+let leafletMap = null;
+let mapLayer = null;
+let routeLayer = null;
+
+const STORAGE_KEY = 'dros-ops-state-v1';
+function saveState(){
+  try{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({zones,nodes,edges,checks,dutyNote}));
+    document.getElementById('save-label').textContent = 'saved ' + new Date().toLocaleTimeString('en-IN');
+    document.getElementById('save-dot').style.background = 'var(--green)';
+  }catch(e){
+    document.getElementById('save-label').textContent = 'save failed';
+    document.getElementById('save-dot').style.background = 'var(--alert)';
+  }
+}
+function loadState(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(!raw) return false;
+    const s = JSON.parse(raw);
+    if(!s.zones || !s.nodes) return false;
+    zones = s.zones; nodes = s.nodes; edges = s.edges||[];
+    if(s.checks) checks = s.checks;
+    dutyNote = s.dutyNote || '';
+    document.getElementById('save-label').textContent = 'restored from this browser';
+    return true;
+  }catch(e){ return false; }
+}
+function clearSavedState(){ try{ localStorage.removeItem(STORAGE_KEY); }catch(e){} }
+
+const PALETTE = {CRITICAL:'#E2524C', HIGH:'#D88920', MEDIUM:'#1F7AA8', LOW:'#2A9A68'};
+function priorityOf(s){ if(s>=50000) return 'CRITICAL'; if(s>=15000) return 'HIGH'; if(s>=5000) return 'MEDIUM'; return 'LOW'; }
+function score(p,f,i){ return p*0.5 + f*0.2 + i*0.3; }
+function copyText(text){
+  if(!text) return Promise.reject();
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    return navigator.clipboard.writeText(text);
+  }
+  return new Promise(function(resolve,reject){
+    var ta=document.createElement('textarea');
+    ta.value=text; ta.setAttribute('readonly',''); ta.style.position='fixed'; ta.style.left='-9999px';
+    document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy') ? resolve() : reject(); }
+    catch(e){ reject(e); }
+    document.body.removeChild(ta);
+  });
+}
+function toast(msg){
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(()=>el.classList.remove('show'), 2400);
+}
+function fmtCoord(n){ return Number(n).toFixed(4); }
+
+class MinHeap{
+  constructor(cmp){ this.a=[]; this.cmp=cmp; }
+  size(){return this.a.length;}
+  push(x){ const a=this.a; a.push(x); let i=a.length-1;
+    while(i>0){ const p=(i-1)>>1; if(this.cmp(a[i],a[p])<0){ [a[i],a[p]]=[a[p],a[i]]; i=p; } else break; } }
+  pop(){ const a=this.a; if(!a.length) return null; const top=a[0]; const last=a.pop();
+    if(a.length){ a[0]=last; let i=0;
+      while(true){ let l=2*i+1,r=2*i+2,s=i;
+        if(l<a.length&&this.cmp(a[l],a[s])<0) s=l;
+        if(r<a.length&&this.cmp(a[r],a[s])<0) s=r;
+        if(s===i) break; [a[i],a[s]]=[a[s],a[i]]; i=s; } }
+    return top; }
+}
+
+function haversineKm(a,b){
+  const R=6371, toR=d=>d*Math.PI/180;
+  const dLat=toR(b.lat-a.lat), dLng=toR(b.lng-a.lng);
+  const s=Math.sin(dLat/2)**2 + Math.cos(toR(a.lat))*Math.cos(toR(b.lat))*Math.sin(dLng/2)**2;
+  return 2*R*Math.asin(Math.sqrt(s));
+}
+function estimateMin(a,b){ return Math.max(8, Math.round(haversineKm(a,b)/0.55)); }
+
+function lookupPlace(q){
+  const s = q.trim().toLowerCase();
+  if(!s) return [];
+  return GAZETTEER.filter(p=>!p.hidden && (p.name.toLowerCase().includes(s) || p.kind.toLowerCase().includes(s) || p.id.includes(s.replace(/\s+/g,'-'))))
+    .slice(0,8);
+}
+function exactPlace(q){
+  const s = q.trim().toLowerCase();
+  return GAZETTEER.find(p=>!p.hidden && p.name.toLowerCase()===s);
+}
+
+function fillPlaceSelect(){
+  const sel = document.getElementById('pq-place');
+  const districts = GAZETTEER.filter(p=>!p.hidden && p.kind.toLowerCase().includes('district')).sort((a,b)=>a.name.localeCompare(b.name));
+  const towns = GAZETTEER.filter(p=>!p.hidden && !p.kind.toLowerCase().includes('district')).sort((a,b)=>a.name.localeCompare(b.name));
+  const opt = (p)=>`<option value="${p.id}">${p.name} — ${p.kind}</option>`;
+  sel.innerHTML = `<option value="">Select an Assam place…</option>
+    <optgroup label="Districts">${districts.map(opt).join('')}</optgroup>
+    <optgroup label="Cities & towns">${towns.map(opt).join('')}</optgroup>`;
+}
+
+function setSelectedPlace(p){
+  selectedPlace = p;
+  const st = document.getElementById('place-status');
+  const btn = document.getElementById('add-btn');
+  const sel = document.getElementById('pq-place');
+  if(p){
+    sel.value = p.id;
+    st.className = 'place-ok';
+    st.textContent = `Verified · ${p.kind} · ${fmtCoord(p.lat)}°N, ${fmtCoord(p.lng)}°E`;
+    btn.disabled = false;
+  }else{
+    sel.value = '';
+    st.className = 'place-ok';
+    st.textContent = 'Choose a district or town.';
+    btn.disabled = true;
+  }
+}
+
+function bindPlaceSearch(){
+  fillPlaceSelect();
+  document.getElementById('pq-place').addEventListener('change', e=>{
+    const p = GAZETTEER.find(x=>x.id===e.target.value);
+    setSelectedPlace(p || null);
+  });
+}
+
+function resetZones(fromLoad){
+  if(!fromLoad) clearSavedState();
+  zones = [
+    {id:'nagaon', name:'Nagaon', hazard:'Flood', p:303567, f:9, i:180},
+    {id:'cachar', name:'Cachar', hazard:'Flood', p:109798, f:8, i:95},
+    {id:'hojai', name:'Hojai', hazard:'Storm', p:86382, f:6, i:60},
+    {id:'majuli', name:'Majuli', hazard:'Flood', p:22000, f:5, i:20},
+  ];
+  nodes = {
+    base:{name:'Base (Guwahati)', type:'base', lat:26.1445, lng:91.7362},
+    nagaon:{name:'Nagaon', type:'zone', lat:26.3479, lng:92.6835},
+    cachar:{name:'Cachar', type:'zone', lat:24.8333, lng:92.7789},
+    hojai:{name:'Hojai', type:'zone', lat:26.0031, lng:92.8558},
+    majuli:{name:'Majuli', type:'zone', lat:26.9526, lng:94.1656},
+  };
+  edges = [
+    {from:'base', to:'hojai', w:12, breached:false},
+    {from:'hojai', to:'nagaon', w:14, breached:false},
+    {from:'hojai', to:'cachar', w:15, breached:false},
+    {from:'cachar', to:'nagaon', w:14, breached:false},
+    {from:'base', to:'majuli', w:20, breached:false},
+    {from:'majuli', to:'nagaon', w:10, breached:false},
+  ];
+  activePath = [];
+  renderAll();
+  if(!fromLoad) toast('Reset to sample Assam incident');
+}
+
+function addZone(){
+  if(!selectedPlace){ toast('Pick a verified Assam place'); return; }
+  const p = parseFloat(document.getElementById('pq-p').value)||0;
+  const f = parseFloat(document.getElementById('pq-f').value)||0;
+  const i = parseFloat(document.getElementById('pq-i').value)||0;
+  const hazard = document.getElementById('pq-hazard').value || 'Flood';
+  const id = selectedPlace.id === 'guwahati' ? 'kamrup-metro' : selectedPlace.id;
+  const name = selectedPlace.name;
+  const existing = zones.find(z=>z.id===id);
+  if(existing){ existing.p=p; existing.f=f; existing.i=i; existing.hazard=hazard; toast('Updated '+name); }
+  else{
+    zones.push({id,name,hazard,p,f,i});
+    if(!nodes[id]){
+      nodes[id] = {name, type:'zone', lat:selectedPlace.lat, lng:selectedPlace.lng};
+      let nearest=null, best=Infinity;
+      Object.entries(nodes).forEach(([oid,n])=>{
+        if(oid===id) return;
+        const d=haversineKm(nodes[id], n);
+        if(d<best){ best=d; nearest=oid; }
+      });
+      if(nearest) edges.push({from:nearest, to:id, w:estimateMin(nodes[id], nodes[nearest]), breached:false});
+    } else {
+      nodes[id].lat = selectedPlace.lat;
+      nodes[id].lng = selectedPlace.lng;
+    }
+    toast(name+' pinned at official coordinates');
+  }
+  setSelectedPlace(null);
+  renderAll();
+}
+function removeZone(id){
+  zones = zones.filter(z=>z.id!==id);
+  edges = edges.filter(e=>e.from!==id && e.to!==id);
+  if(id!=='base') delete nodes[id];
+  activePath = activePath.filter(x=>x!==id);
+  renderAll();
+}
+
+function renderOverview(){
+  const people = zones.reduce((s,z)=>s+z.p,0);
+  const scored = zones.map(z=>({...z,s:score(z.p,z.f,z.i)})).sort((a,b)=>b.s-a.s);
+  const crit = scored.filter(z=>priorityOf(z.s)==='CRITICAL').length;
+  const blocked = edges.filter(e=>e.breached).length;
+  document.getElementById('st-zones').textContent = zones.length;
+  document.getElementById('st-people').textContent = people.toLocaleString('en-IN');
+  document.getElementById('st-crit').textContent = crit;
+  document.getElementById('st-top').textContent = scored[0] ? 'Highest: '+scored[0].name : 'No places yet';
+  document.getElementById('st-block').textContent = blocked;
+  document.getElementById('st-roads').textContent = (edges.length-blocked)+' open of '+edges.length;
+  document.getElementById('bar-zones').style.width = Math.min(100, zones.length*12)+'%';
+  document.getElementById('bar-people').style.width = Math.min(100, people/6000)+'%';
+  document.getElementById('bar-crit').style.width = (zones.length? (crit/zones.length)*100 : 0)+'%';
+  document.getElementById('bar-block').style.width = (edges.length? ((edges.length-blocked)/edges.length)*100 : 0)+'%';
+}
+
+function renderPriorityQueue(){
+  const q = (document.getElementById('pq-search').value||'').toLowerCase();
+  const heap = new MinHeap((a,b)=> b.s - a.s);
+  zones.map(z=>({...z, s: score(z.p,z.f,z.i)})).forEach(z=>heap.push(z));
+  const ranked = []; while(heap.size()) ranked.push(heap.pop());
+  const tbody = document.getElementById('pq-table');
+  tbody.innerHTML = '';
+  ranked.filter(z=>!q || z.name.toLowerCase().includes(q)).forEach((z,idx)=>{
+    const pr = priorityOf(z.s);
+    const n = nodes[z.id] || {};
+    const tr = document.createElement('tr');
+    tr.className = pr==='CRITICAL' ? 'crit' : pr==='HIGH' ? 'high' : '';
+    tr.innerHTML = `<td class="mono">${idx+1}</td><td>${z.name}</td><td>${z.hazard||'—'}</td><td class="coords">${n.lat?fmtCoord(n.lat)+', '+fmtCoord(n.lng):'—'}</td><td class="mono">${z.p.toLocaleString()}</td><td class="mono">${z.f}</td><td class="mono">${z.i}</td><td class="mono">${Math.round(z.s).toLocaleString()}</td><td><span class="badge ${pr}">${pr}</span></td><td><button class="btn ghost sm" onclick="removeZone('${z.id}')">remove</button></td>`;
+    tbody.appendChild(tr);
+  });
+  return ranked;
+}
+
+function neighbors(nodeId){
+  return edges.filter(e=> (e.from===nodeId||e.to===nodeId) && !e.breached)
+    .map(e=> ({ to: e.from===nodeId ? e.to : e.from, w: e.w }));
+}
+function dijkstra(src, dst){
+  const dist = {}, prev = {};
+  Object.keys(nodes).forEach(n=> dist[n]=Infinity);
+  dist[src]=0;
+  const heap = new MinHeap((a,b)=>a.d-b.d);
+  heap.push({id:src, d:0});
+  const visited = new Set();
+  while(heap.size()){
+    const {id,d} = heap.pop();
+    if(visited.has(id)) continue;
+    visited.add(id);
+    if(id===dst) break;
+    neighbors(id).forEach(nb=>{
+      const nd = d + nb.w;
+      if(nd < dist[nb.to]){ dist[nb.to] = nd; prev[nb.to] = id; heap.push({id:nb.to, d:nd}); }
+    });
+  }
+  if(dist[dst]===Infinity) return null;
+  const path=[dst]; let cur=dst;
+  while(cur!==src){ cur=prev[cur]; path.unshift(cur); }
+  return {path, dist: dist[dst]};
+}
+
+function populateNodeSelects(){
+  const ids = Object.keys(nodes);
+  ['rt-from','rt-to','rd-from','rd-to'].forEach(sel=>{
+    const el = document.getElementById(sel);
+    const cur = el.value;
+    el.innerHTML = ids.map(id=>`<option value="${id}">${nodes[id].name}</option>`).join('');
+    if(ids.includes(cur)) el.value = cur;
+  });
+  if(!document.getElementById('rt-from').value) document.getElementById('rt-from').value = 'base';
+}
+
+function addRoad(){
+  const from = document.getElementById('rd-from').value;
+  const to = document.getElementById('rd-to').value;
+  const w = parseFloat(document.getElementById('rd-w').value)||1;
+  if(from===to){ toast('Pick two different places.'); return; }
+  edges.push({from,to,w,breached:false});
+  renderGraph(); saveState(); renderOverview();
+  toast('Road added');
+}
+function toggleBreach(idx){ edges[idx].breached = !edges[idx].breached; renderGraph(); drawActiveRoute(); saveState(); renderOverview(); }
+
+function edgeOnPath(e, path){
+  for(let i=0;i<path.length-1;i++){
+    const a=path[i], b=path[i+1];
+    if((e.from===a&&e.to===b)||(e.from===b&&e.to===a)) return true;
+  }
+  return false;
+}
+
+function renderGraph(){
+  const priorities = {};
+  zones.forEach(z=> priorities[z.id] = priorityOf(score(z.p,z.f,z.i)));
+
+  if(!leafletMap){
+    leafletMap = L.map('graph-map', {scrollWheelZoom:true}).setView([26.2,92.9], 7);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 14
+    }).addTo(leafletMap);
+    mapLayer = L.layerGroup().addTo(leafletMap);
+    routeLayer = L.layerGroup().addTo(leafletMap);
+  }
+  mapLayer.clearLayers();
+
+  edges.forEach((e,idx)=>{
+    const a = nodes[e.from], b = nodes[e.to];
+    if(!a||!b) return;
+    const on = edgeOnPath(e, activePath);
+    const color = e.breached ? '#E2524C' : on ? '#14587C' : '#9BB8C9';
+    const line = L.polyline([[a.lat,a.lng],[b.lat,b.lng]], {
+      color, weight: e.breached?2:(on?3:3), dashArray: e.breached?'6,6':null, opacity: on?0.35:0.7
+    }).addTo(mapLayer);
+    line.bindTooltip(e.breached ? 'Blocked — click to clear' : `${e.w} min — click to block`, {sticky:true, className:'edge-tag'+(e.breached?' breached':'')});
+    line.on('click', ()=> toggleBreach(idx));
+  });
+
+  Object.entries(nodes).forEach(([id,n])=>{
+    const isBase = n.type==='base';
+    const pr = priorities[id];
+    const on = activePath.includes(id);
+    const color = isBase ? '#8C7A57' : (pr ? PALETTE[pr] : '#1F7AA8');
+    const size = isBase ? 20 : on ? 18 : 15;
+    const icon = L.divIcon({
+      className:'',
+      html:`<div class="zone-pin${isBase?' base':''}" style="width:${size}px;height:${size}px;background:${color};${on?'box-shadow:0 0 0 6px rgba(31,122,168,.25);':''}"></div>`,
+      iconSize:[size,size], iconAnchor:[size/2,size/2]
+    });
+    const marker = L.marker([n.lat,n.lng], {icon}).addTo(mapLayer);
+    marker.bindPopup(`<b style="font-family:Outfit">${n.name}</b><br><span class="coords">${fmtCoord(n.lat)}, ${fmtCoord(n.lng)}</span>${pr?`<br>${pr}`:''}`);
+    marker.bindTooltip(n.name, {permanent:true, direction:'top', offset:[0,-size/2-2], className:'edge-tag'});
+  });
+
+  setTimeout(()=> leafletMap.invalidateSize(), 50);
+  populateNodeSelects();
+}
+
+let lastNav = null;
+let navToken = 0;
+function fmtKm(m){ return m>=1000 ? (m/1000).toFixed(1)+' km' : Math.round(m)+' m'; }
+function fmtDur(s){ const m=Math.round(s/60); return m<60 ? m+' min' : Math.floor(m/60)+' h '+(m%60)+' min'; }
+function googleNavUrl(pathIds){
+  if(!pathIds || pathIds.length<2) return '';
+  const pts = pathIds.map(id => nodes[id].lat+','+nodes[id].lng);
+  return 'https://www.google.com/maps/dir/'+pts.join('/');
+}
+function googleNavAppUrl(pathIds){
+  if(!pathIds || pathIds.length<2) return '';
+  const a = nodes[pathIds[0]], b = nodes[pathIds[pathIds.length-1]];
+  return 'https://maps.google.com/?saddr='+a.lat+','+a.lng+'&daddr='+b.lat+','+b.lng+'&dirflg=d';
+}
+function setNavLinks(pathIds){
+  const web = googleNavUrl(pathIds);
+  lastNav = lastNav || {};
+  lastNav.url = web;
+  const a = document.getElementById('gmaps-link');
+  if(a) a.href = web;
+  const box = document.getElementById('nav-url');
+  if(box) box.value = web;
+  const hint = document.getElementById('nav-block-hint');
+  if(hint){
+    const framed = window.top !== window.self;
+    hint.style.display = 'block';
+    hint.className = framed ? 'place-ok place-bad' : 'place-ok';
+    hint.textContent = framed
+      ? 'This preview blocks Google Maps. Copy the link below and paste it in a new Chrome tab, or open this HTML file directly (not in the preview).'
+      : 'If the button is blocked, copy the link below into a new tab.';
+  }
+}
+function copyNavLink(){
+  const url = (lastNav && lastNav.url) || (document.getElementById('gmaps-link')||{}).href;
+  if(!url || url==='#' || url.endsWith('#')){ toast('Find a route first'); return; }
+  copyText(url).then(()=>toast('Maps link copied')).catch(()=>toast('Select the link and copy'));
+}
+function drawStraightFallback(){
+  if(!routeLayer || activePath.length<2) return;
+  const latlngs = activePath.map(id=>[nodes[id].lat, nodes[id].lng]);
+  L.polyline(latlngs, {color:'#8FD0EA', weight:14, opacity:.28, lineCap:'round'}).addTo(routeLayer);
+  L.polyline(latlngs, {color:'#1F7AA8', weight:6, opacity:.95, lineCap:'round', className:'route-glow'}).addTo(routeLayer);
+  leafletMap.fitBounds(L.latLngBounds(latlngs).pad(0.28), {animate:true, maxZoom:10});
+}
+function drawActiveRoute(){
+  if(!routeLayer) return;
+  routeLayer.clearLayers();
+  if(activePath.length<2) return;
+  drawStraightFallback();
+  loadRoadNavigation(activePath);
+}
+async function osrmLeg(a,b){
+  const url = 'https://router.project-osrm.org/route/v1/driving/'+a.lng+','+a.lat+';'+b.lng+','+b.lat+'?overview=full&geometries=geojson&steps=true';
+  const res = await fetch(url);
+  if(!res.ok) throw new Error('osrm');
+  const data = await res.json();
+  if(!data.routes || !data.routes[0]) throw new Error('no route');
+  return data.routes[0];
+}
+async function loadRoadNavigation(path){
+  const token = ++navToken;
+  const panel = document.getElementById('nav-panel');
+  const stepsEl = document.getElementById('nav-steps');
+  try{
+    const legs = [];
+    for(let i=0;i<path.length-1;i++){
+      legs.push(await osrmLeg(nodes[path[i]], nodes[path[i+1]]));
+      if(token!==navToken) return;
+    }
+    const coords = [];
+    const steps = [];
+    let dist=0, dur=0;
+    legs.forEach((leg,li)=>{
+      dist += leg.distance; dur += leg.duration;
+      (leg.geometry.coordinates||[]).forEach(c=> coords.push([c[1],c[0]]));
+      (leg.legs||[]).forEach(seg=>{
+        (seg.steps||[]).forEach(st=>{
+          const road = st.name && st.name!=='-' ? ' onto '+st.name : '';
+          const mv = st.maneuver || {};
+          let man = mv.instruction || [mv.modifier, mv.type].filter(Boolean).join(' ') || 'Continue';
+          man = man.charAt(0).toUpperCase()+man.slice(1);
+          steps.push({text: man+road, dist: st.distance});
+        });
+      });
+      if(li<path.length-2) steps.push({text:'Via '+nodes[path[li+1]].name, dist:0, via:true});
+    });
+    if(token!==navToken) return;
+    routeLayer.clearLayers();
+    if(coords.length){
+      L.polyline(coords, {color:'#8FD0EA', weight:16, opacity:.25, lineCap:'round'}).addTo(routeLayer);
+      L.polyline(coords, {color:'#1F7AA8', weight:6, opacity:.95, lineCap:'round', className:'route-glow'}).addTo(routeLayer);
+      const dash = L.polyline(coords, {color:'#fff', weight:2, opacity:.85, className:'route-dash'}).addTo(routeLayer);
+      if(dash._path) dash._path.classList.add('route-dash');
+      leafletMap.fitBounds(L.latLngBounds(coords).pad(0.18), {animate:true, maxZoom:12});
+    }
+    lastNav = {dist, dur};
+    setNavLinks(path);
+    document.getElementById('nav-summary').textContent = fmtKm(dist)+' · '+fmtDur(dur)+' drive';
+    document.getElementById('nav-via').textContent = path.map(id=>nodes[id].name).join(' → ');
+    stepsEl.innerHTML = steps.slice(0,80).map((s,i)=>'<div class="nav-step"><div class="nav-n">'+(s.via?'•':(i+1))+'</div><div>'+s.text+'</div><div class="nav-km">'+(s.dist?fmtKm(s.dist):'')+'</div></div>').join('');
+    panel.style.display = 'block';
+  }catch(err){
+    if(token!==navToken) return;
+    lastNav = {url: googleNavUrl(path)};
+    document.getElementById('nav-summary').textContent = 'Open Google Maps for turn-by-turn';
+    document.getElementById('nav-via').textContent = path.map(id=>nodes[id].name).join(' → ');
+    stepsEl.innerHTML = '<div class="nav-step"><div></div><div>Road service is busy. Corridor is drawn — use Google Maps to drive it.</div><div></div></div>';
+    panel.style.display = 'block';
+  }
+}
+
+function runDijkstra(announce){
+  const from = document.getElementById('rt-from').value;
+  const to = document.getElementById('rt-to').value;
+  const box = document.getElementById('rt-result');
+  const panel = document.getElementById('nav-panel');
+  if(!from || !to || from===to){
+    activePath = []; lastNav=null;
+    if(routeLayer) routeLayer.clearLayers();
+    renderGraph();
+    if(panel) panel.style.display='none';
+    box.innerHTML = '<div class="warn">Pick two different places.</div>';
+    return;
+  }
+  const result = dijkstra(from,to);
+  if(!result){
+    activePath = []; lastNav=null;
+    if(routeLayer) routeLayer.clearLayers();
+    renderGraph();
+    if(panel) panel.style.display='none';
+    box.innerHTML = `<div class="crit">No route — every path from ${nodes[from].name} to ${nodes[to].name} is blocked.</div>`;
+    return;
+  }
+  activePath = result.path;
+  renderGraph();
+  const pathNames = result.path.map(id=>nodes[id].name).join(' → ');
+  const anyBreach = edges.some(e=>e.breached);
+  box.innerHTML = `
+    <div class="ok">Corridor selected</div>
+    <div>${pathNames}</div>
+    <div class="mono">Network time: ${result.dist} min · ${result.path.length-1} hops</div>
+    ${anyBreach ? '<div class="warn">Recalculated around a blocked road.</div>' : ''}
+    <div>Loading road navigation…</div>
+  `;
+  drawActiveRoute();
+  if(announce) toast('Navigating this corridor');
+}
+
+function runAllocation(){
+  const pool = {
+    Boat: parseInt(document.getElementById('res-boats').value)||0,
+    Helicopter: parseInt(document.getElementById('res-heli').value)||0,
+    Ambulance: parseInt(document.getElementById('res-amb').value)||0,
+    'SDRF team': parseInt(document.getElementById('res-sdrf').value)||0,
+  };
+  const ranked = zones.map(z=>({...z, s:score(z.p,z.f,z.i)})).sort((a,b)=>b.s-a.s);
+  const order = ['Helicopter','Boat','SDRF team','Ambulance'];
+  let out = ''; lastAllocText = '';
+  ranked.forEach(z=>{
+    const pr = priorityOf(z.s);
+    const given = [];
+    for(const type of order){
+      const need = pr==='CRITICAL' ? 2 : 1;
+      let assigned = 0;
+      while(assigned<need && pool[type]>0){ pool[type]--; assigned++; }
+      if(assigned>0) given.push(`${assigned}× ${type}${assigned>1?'s':''}`);
+      if(given.length>=2) break;
+    }
+    const cls = pr==='CRITICAL'?'crit':pr==='HIGH'?'warn':'ok';
+    lastAllocText += `${z.name} [${pr}] → ${given.length?given.join(' + '):'queued'}\n`;
+    out += `<div><span class="${cls}">[${pr}]</span> ${z.name} (score ${Math.round(z.s).toLocaleString()}) → ${given.length?given.join(' + '):'<span class="crit">no assets left — queued</span>'}</div>`;
+  });
+  out += `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">Remaining at base: ${Object.entries(pool).map(([k,v])=>`${v} ${k.toLowerCase()}${v!==1?'s':''}`).join(', ')}</div>`;
+  document.getElementById('alloc-log').innerHTML = out;
+  toast('Dispatch plan ready');
+}
+
+function exportBrief(){
+  const ranked = zones.map(z=>({...z,s:score(z.p,z.f,z.i)})).sort((a,b)=>b.s-a.s);
+  const people = zones.reduce((s,z)=>s+z.p,0);
+  const blocked = edges.filter(e=>e.breached).length;
+  const text = [
+    'DROS SITUATION BRIEF — Assam',
+    new Date().toLocaleString('en-IN'),
+    `Places: ${zones.length} · Affected: ${people.toLocaleString('en-IN')} · Blocked roads: ${blocked}`,
+    '', 'PRIORITY ORDER',
+    ...ranked.map((z,i)=>{
+      const n=nodes[z.id]||{};
+      return `${i+1}. ${z.name} (${n.lat?fmtCoord(n.lat)+', '+fmtCoord(n.lng):'—'}) — score ${Math.round(z.s).toLocaleString()} (${priorityOf(z.s)})`;
+    }),
+    '', dutyNote ? 'DUTY NOTE\n'+dutyNote : ''
+  ].join('\n');
+  copyText(text).then(()=>toast('Brief copied')).catch(()=>toast('Could not copy'));
+}
+function exportAlloc(){
+  if(!lastAllocText){ toast('Assign resources first'); return; }
+  copyText(lastAllocText).then(()=>toast('Assignment copied')).catch(()=>toast('Could not copy'));
+}
+
+function renderOps(){
+  document.getElementById('ops-checks').innerHTML = checks.map(c=>`
+    <label><input type="checkbox" ${c.on?'checked':''} onchange="toggleCheck('${c.id}')">${c.t}</label>
+  `).join('');
+  const note = document.getElementById('ops-note');
+  if(note.value !== dutyNote) note.value = dutyNote;
+}
+function toggleCheck(id){ const c = checks.find(x=>x.id===id); if(c) c.on=!c.on; saveState(); }
+document.getElementById('ops-note').addEventListener('input', e=>{ dutyNote = e.target.value; saveState(); });
+
+document.querySelectorAll('.tabbtn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.tabbtn').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('panel-'+btn.dataset.tab).classList.add('active');
+    if(btn.dataset.tab==='routing' && leafletMap){
+      setTimeout(()=>{ leafletMap.invalidateSize(); if(activePath.length) drawActiveRoute(); }, 80);
+    }
+  });
+});
+
+['rt-from','rt-to'].forEach(id=>{
+  document.getElementById(id).addEventListener('change', ()=> runDijkstra(false));
+});
+
+function renderAll(){
+  renderPriorityQueue();
+  populateNodeSelects();
+  renderGraph();
+  if(activePath.length) drawActiveRoute();
+  renderOverview();
+  renderOps();
+  saveState();
+}
+
+bindPlaceSearch();
+if(!loadState()) resetZones(true);
+renderAll();
+window.addEventListener('resize', function(){
+  if(leafletMap){ leafletMap.invalidateSize(); }
+});
+window.addEventListener('orientationchange', function(){
+  setTimeout(function(){ if(leafletMap) leafletMap.invalidateSize(); }, 250);
+});
+</script>
+</body>
+</html>
