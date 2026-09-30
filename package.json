@@ -1,0 +1,12 @@
+{
+  "name": "dros",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Disaster Response Operations System",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

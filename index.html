@@ -13,8 +13,15 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Outfit:wght@400;500;600;700&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" onerror="this.onerror=null;this.href='https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css'">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js'"></script>
+<script>
+  (function(){
+    const params = new URLSearchParams(window.location.search);
+    const workspace = params.get('page') === 'workspace' || /\/workspace\/?$/.test(window.location.pathname);
+    document.documentElement.dataset.page = workspace ? 'workspace' : 'overview';
+  })();
+</script>
 <style>
   :root{
     --bg:#F6F8FB;
@@ -96,6 +103,12 @@
   @media (prefers-reduced-motion: reduce){
     .mesh,.orb,.wave,.grid-overlay,.ripple{animation:none !important;}
   }
+
+  html[data-page="workspace"] .hero,
+  html[data-page="workspace"] #overview,
+  html[data-page="overview"] #workspace,
+  html[data-page="overview"] .wrap{display:none;}
+  html[data-page="workspace"] .topbar{border-bottom-color:#D5EAF4;}
 
   .topbar{
     display:flex;justify-content:space-between;align-items:center;
@@ -240,7 +253,18 @@
   .badge.MEDIUM{background:var(--river-light);color:#1E5E7E;}
   .badge.LOW{background:var(--green-light);color:#276B48;}
 
-  #graph-map{height:480px;border-radius:16px;overflow:hidden;border:1px solid var(--border);}
+  #graph-map{height:480px;border-radius:16px;overflow:hidden;border:1px solid var(--border);background:#EAF2F5;}
+  #graph-map.map-fallback{position:relative;background:linear-gradient(145deg,#F4F9FA,#E7F1F4);}
+  .map-fallback-svg{display:block;width:100%;height:100%;}
+  .map-fallback-svg .map-grid{stroke:#C8DDE3;stroke-width:1;opacity:.65;}
+  .map-fallback-svg .map-edge{stroke:#9BB8C9;stroke-width:3;opacity:.85;cursor:pointer;}
+  .map-fallback-svg .map-edge:hover{stroke:#14587C;stroke-width:5;}
+  .map-fallback-svg .map-edge.blocked{stroke:#E2524C;stroke-width:2;stroke-dasharray:7 7;}
+  .map-fallback-svg .map-edge.active{stroke:#14587C;stroke-width:5;opacity:.95;}
+  .map-fallback-svg .map-route{fill:none;stroke:#1F7AA8;stroke-width:8;stroke-linecap:round;stroke-linejoin:round;opacity:.9;pointer-events:none;}
+  .map-fallback-svg .map-node{stroke:#fff;stroke-width:3;cursor:pointer;}
+  .map-fallback-svg .map-label{font:600 12px 'Plus Jakarta Sans',sans-serif;fill:#273A46;paint-order:stroke;stroke:#F4F9FA;stroke-width:4px;stroke-linejoin:round;pointer-events:none;}
+  .map-fallback-note{position:absolute;right:12px;bottom:10px;padding:6px 9px;border:1px solid #D0E0E5;border-radius:8px;background:rgba(255,255,255,.88);color:var(--text-dim);font-size:11px;box-shadow:0 2px 8px rgba(16,24,40,.06);}
   .nav-steps{max-height:280px;overflow:auto;margin-top:12px;}
   .nav-step{display:grid;grid-template-columns:28px 1fr auto;gap:10px;align-items:start;padding:10px 4px;border-bottom:1px solid var(--border);font-size:13.5px;}
   .nav-step:last-child{border-bottom:none;}
@@ -310,8 +334,8 @@
     </div>
   </div>
   <nav class="nav-links">
-    <a href="#overview">Overview</a>
-    <a href="#workspace">Workspace</a>
+    <a href="/">Overview</a>
+    <a href="/workspace">Workspace</a>
   </nav>
   <div class="savebar"><span class="dot" id="save-dot"></span><span id="save-label">not saved yet</span></div>
 </div>
@@ -321,7 +345,7 @@
   <h1>One board for floods, quakes, storms — <em>who, how, what to send</em>.</h1>
   <p>DROS is a disaster operations desk, not a flood-only tool. Tag the hazard, rank verified Assam places by need, draw the fastest open corridor, and share teams and assets fairly.</p>
   <div class="hero-actions">
-    <button class="btn" onclick="document.getElementById('workspace').scrollIntoView()">Open workspace</button>
+    <a class="btn" href="/workspace">Open workspace</a>
     <button class="btn ghost" onclick="exportBrief()">Export situation brief</button>
   </div>
 </section>
@@ -534,17 +558,49 @@ let activePath = [];
 let leafletMap = null;
 let mapLayer = null;
 let routeLayer = null;
+let tileLayer = null;
+let mapFallback = false;
+let tileFallbackTried = false;
 
 const STORAGE_KEY = 'dros-ops-state-v1';
+let backendHydrated = false;
+let backendFailed = false;
+let backendSaveTimer = null;
+
+function stateSnapshot(){ return {zones,nodes,edges,checks,dutyNote}; }
+function setSaveStatus(text, color='var(--green)'){
+  const label = document.getElementById('save-label');
+  const dot = document.getElementById('save-dot');
+  if(label) label.textContent = text;
+  if(dot) dot.style.background = color;
+}
 function saveState(){
+  const snapshot = stateSnapshot();
   try{
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({zones,nodes,edges,checks,dutyNote}));
-    document.getElementById('save-label').textContent = 'saved ' + new Date().toLocaleTimeString('en-IN');
-    document.getElementById('save-dot').style.background = 'var(--green)';
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+    setSaveStatus((backendHydrated ? 'saved ' : 'saved locally · ') + new Date().toLocaleTimeString('en-IN'));
   }catch(e){
-    document.getElementById('save-label').textContent = 'save failed';
-    document.getElementById('save-dot').style.background = 'var(--alert)';
+    setSaveStatus('local save failed', 'var(--alert)');
   }
+
+  // Keep localStorage as an offline fallback, while the Node API provides a
+  // shared, durable copy when the app is served through server.js.
+  if(!backendHydrated || backendFailed || window.location.protocol === 'file:') return;
+  clearTimeout(backendSaveTimer);
+  backendSaveTimer = setTimeout(async()=>{
+    try{
+      const response = await fetch('/api/state', {
+        method:'PUT',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(snapshot)
+      });
+      if(!response.ok) throw new Error('state save failed');
+      setSaveStatus('saved ' + new Date().toLocaleTimeString('en-IN'));
+    }catch(e){
+      backendFailed = true;
+      setSaveStatus('saved locally · backend unavailable', 'var(--amber)');
+    }
+  }, 150);
 }
 function loadState(){
   try{
@@ -555,11 +611,39 @@ function loadState(){
     zones = s.zones; nodes = s.nodes; edges = s.edges||[];
     if(s.checks) checks = s.checks;
     dutyNote = s.dutyNote || '';
-    document.getElementById('save-label').textContent = 'restored from this browser';
+    setSaveStatus('restored from this browser');
     return true;
   }catch(e){ return false; }
 }
 function clearSavedState(){ try{ localStorage.removeItem(STORAGE_KEY); }catch(e){} }
+
+async function hydrateBackend(){
+  if(window.location.protocol === 'file:') return;
+  try{
+    const response = await fetch('/api/state', {headers:{'Accept':'application/json'}});
+    backendHydrated = true;
+    if(response.ok){
+      const s = await response.json();
+      if(s && Array.isArray(s.zones) && s.nodes && Array.isArray(s.edges)){
+        zones = s.zones;
+        nodes = s.nodes;
+        edges = s.edges;
+        if(Array.isArray(s.checks)) checks = s.checks;
+        dutyNote = s.dutyNote || '';
+        renderAll();
+        setSaveStatus('loaded from server');
+      }
+    }else if(response.status === 404){
+      // First run: promote the current sample/local browser state to the API.
+      saveState();
+    }else{
+      throw new Error('state request failed');
+    }
+  }catch(e){
+    backendFailed = true;
+    setSaveStatus('saved locally · backend unavailable', 'var(--amber)');
+  }
+}
 
 const PALETTE = {CRITICAL:'#E2524C', HIGH:'#D88920', MEDIUM:'#1F7AA8', LOW:'#2A9A68'};
 function priorityOf(s){ if(s>=50000) return 'CRITICAL'; if(s>=15000) return 'HIGH'; if(s>=5000) return 'MEDIUM'; return 'LOW'; }
@@ -814,50 +898,140 @@ function edgeOnPath(e, path){
   return false;
 }
 
-function renderGraph(){
+function escapeMapText(value){
+  return String(value).replace(/[&<>"']/g, ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+}
+
+// A small, dependency-free network view keeps the routing tool usable when a
+// browser extension, CSP, or offline preview prevents Leaflet or its tiles
+// from loading. The normal view is still Leaflet whenever it is available.
+function renderFallbackMap(){
+  const el = document.getElementById('graph-map');
+  if(!el) return;
+  const points = Object.values(nodes).filter(n=>Number.isFinite(Number(n.lat)) && Number.isFinite(Number(n.lng)));
+  if(!points.length){
+    el.classList.add('map-fallback');
+    el.innerHTML = '<div class="map-fallback-note">No mapped places yet</div>';
+    return;
+  }
+  const W = 1000, H = 480, padX = 62, padY = 48;
+  const minLat = Math.min(...points.map(n=>Number(n.lat)));
+  const maxLat = Math.max(...points.map(n=>Number(n.lat)));
+  const minLng = Math.min(...points.map(n=>Number(n.lng)));
+  const maxLng = Math.max(...points.map(n=>Number(n.lng)));
+  const latRange = Math.max(maxLat-minLat, .01);
+  const lngRange = Math.max(maxLng-minLng, .01);
+  const xy = n=>({
+    x: padX + ((Number(n.lng)-minLng)/lngRange)*(W-padX*2),
+    y: H-padY - ((Number(n.lat)-minLat)/latRange)*(H-padY*2)
+  });
   const priorities = {};
   zones.forEach(z=> priorities[z.id] = priorityOf(score(z.p,z.f,z.i)));
+  const colorFor = (id, n)=> n.type==='base' ? '#8C7A57' : (priorities[id] ? PALETTE[priorities[id]] : '#1F7AA8');
+  const grid = Array.from({length:6},(_,i)=>{
+    const x = padX + i*(W-padX*2)/5;
+    const y = padY + i*(H-padY*2)/5;
+    return `<line class="map-grid" x1="${x}" y1="${padY}" x2="${x}" y2="${H-padY}"/><line class="map-grid" x1="${padX}" y1="${y}" x2="${W-padX}" y2="${y}"/>`;
+  }).join('');
+  const edgeSvg = edges.map((e,idx)=>{
+    const a=nodes[e.from], b=nodes[e.to];
+    if(!a||!b) return '';
+    const p1=xy(a), p2=xy(b), on=edgeOnPath(e,activePath);
+    return `<line class="map-edge${e.breached?' blocked':''}${on?' active':''}" x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" onclick="toggleBreach(${idx})" title="${e.breached?'Blocked — click to clear':(e.w+' min — click to block')}"/>`;
+  }).join('');
+  const routePoints = activePath.map(id=>nodes[id]).filter(Boolean).map(xy).map(p=>`${p.x},${p.y}`).join(' ');
+  const routeSvg = routePoints ? `<polyline class="map-route" points="${routePoints}"/>` : '';
+  const nodeSvg = Object.entries(nodes).map(([id,n])=>{
+    if(!Number.isFinite(Number(n.lat)) || !Number.isFinite(Number(n.lng))) return '';
+    const p=xy(n), active=activePath.includes(id), size=n.type==='base'?10:(active?9:7);
+    return `<circle class="map-node" cx="${p.x}" cy="${p.y}" r="${size}" fill="${colorFor(id,n)}"><title>${escapeMapText(n.name)} · ${Number(n.lat).toFixed(4)}, ${Number(n.lng).toFixed(4)}</title></circle><text class="map-label" x="${p.x+size+5}" y="${p.y+4}">${escapeMapText(n.name)}</text>`;
+  }).join('');
+  el.classList.add('map-fallback');
+  el.innerHTML = `<svg class="map-fallback-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Interactive rescue network map">${grid}${edgeSvg}${routeSvg}${nodeSvg}</svg><div class="map-fallback-note">Interactive network view · basemap unavailable</div>`;
+}
 
-  if(!leafletMap){
-    leafletMap = L.map('graph-map', {scrollWheelZoom:true}).setView([26.2,92.9], 7);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 14
-    }).addTo(leafletMap);
-    mapLayer = L.layerGroup().addTo(leafletMap);
-    routeLayer = L.layerGroup().addTo(leafletMap);
-  }
-  mapLayer.clearLayers();
+function showMapFallback(){
+  mapFallback = true;
+  if(leafletMap){ leafletMap.remove(); }
+  leafletMap = null;
+  mapLayer = null;
+  routeLayer = null;
+  tileLayer = null;
+  renderFallbackMap();
+}
 
-  edges.forEach((e,idx)=>{
-    const a = nodes[e.from], b = nodes[e.to];
-    if(!a||!b) return;
-    const on = edgeOnPath(e, activePath);
-    const color = e.breached ? '#E2524C' : on ? '#14587C' : '#9BB8C9';
-    const line = L.polyline([[a.lat,a.lng],[b.lat,b.lng]], {
-      color, weight: e.breached?2:(on?3:3), dashArray: e.breached?'6,6':null, opacity: on?0.35:0.7
-    }).addTo(mapLayer);
-    line.bindTooltip(e.breached ? 'Blocked — click to clear' : `${e.w} min — click to block`, {sticky:true, className:'edge-tag'+(e.breached?' breached':'')});
-    line.on('click', ()=> toggleBreach(idx));
+function tryOpenStreetMapTiles(){
+  if(!leafletMap || tileFallbackTried) return;
+  tileFallbackTried = true;
+  if(tileLayer) leafletMap.removeLayer(tileLayer);
+  tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors', maxZoom: 19
   });
+  tileLayer.once('tileerror', showMapFallback);
+  tileLayer.addTo(leafletMap);
+}
 
-  Object.entries(nodes).forEach(([id,n])=>{
-    const isBase = n.type==='base';
-    const pr = priorities[id];
-    const on = activePath.includes(id);
-    const color = isBase ? '#8C7A57' : (pr ? PALETTE[pr] : '#1F7AA8');
-    const size = isBase ? 20 : on ? 18 : 15;
-    const icon = L.divIcon({
-      className:'',
-      html:`<div class="zone-pin${isBase?' base':''}" style="width:${size}px;height:${size}px;background:${color};${on?'box-shadow:0 0 0 6px rgba(31,122,168,.25);':''}"></div>`,
-      iconSize:[size,size], iconAnchor:[size/2,size/2]
-    });
-    const marker = L.marker([n.lat,n.lng], {icon}).addTo(mapLayer);
-    marker.bindPopup(`<b style="font-family:Outfit">${n.name}</b><br><span class="coords">${fmtCoord(n.lat)}, ${fmtCoord(n.lng)}</span>${pr?`<br>${pr}`:''}`);
-    marker.bindTooltip(n.name, {permanent:true, direction:'top', offset:[0,-size/2-2], className:'edge-tag'});
-  });
-
-  setTimeout(()=> leafletMap.invalidateSize(), 50);
+function renderGraph(){
+  const el = document.getElementById('graph-map');
+  if(!el) return;
   populateNodeSelects();
+
+  // Do not initialise Leaflet while the routing panel is hidden. Its first
+  // size calculation would be 0 × 0 and leaves a blank map in many browsers.
+  if(!el.offsetWidth || !el.offsetHeight) return;
+  if(mapFallback){ renderFallbackMap(); return; }
+  if(typeof L === 'undefined'){
+    showMapFallback();
+    return;
+  }
+
+  try{
+    if(!leafletMap){
+      leafletMap = L.map('graph-map', {scrollWheelZoom:true}).setView([26.2,92.9], 7);
+      tileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 14
+      });
+      tileLayer.once('tileerror', tryOpenStreetMapTiles).addTo(leafletMap);
+      mapLayer = L.layerGroup().addTo(leafletMap);
+      routeLayer = L.layerGroup().addTo(leafletMap);
+    }
+    el.classList.remove('map-fallback');
+    mapLayer.clearLayers();
+
+    const priorities = {};
+    zones.forEach(z=> priorities[z.id] = priorityOf(score(z.p,z.f,z.i)));
+    edges.forEach((e,idx)=>{
+      const a = nodes[e.from], b = nodes[e.to];
+      if(!a||!b) return;
+      const on = edgeOnPath(e, activePath);
+      const color = e.breached ? '#E2524C' : on ? '#14587C' : '#9BB8C9';
+      const line = L.polyline([[a.lat,a.lng],[b.lat,b.lng]], {
+        color, weight: e.breached?2:(on?3:3), dashArray: e.breached?'6,6':null, opacity: on?0.35:0.7
+      }).addTo(mapLayer);
+      line.bindTooltip(e.breached ? 'Blocked — click to clear' : `${e.w} min — click to block`, {sticky:true, className:'edge-tag'+(e.breached?' breached':'')});
+      line.on('click', ()=> toggleBreach(idx));
+    });
+
+    Object.entries(nodes).forEach(([id,n])=>{
+      const isBase = n.type==='base';
+      const pr = priorities[id];
+      const on = activePath.includes(id);
+      const color = isBase ? '#8C7A57' : (pr ? PALETTE[pr] : '#1F7AA8');
+      const size = isBase ? 20 : on ? 18 : 15;
+      const icon = L.divIcon({
+        className:'',
+        html:`<div class="zone-pin${isBase?' base':''}" style="width:${size}px;height:${size}px;background:${color};${on?'box-shadow:0 0 0 6px rgba(31,122,168,.25);':''}"></div>`,
+        iconSize:[size,size], iconAnchor:[size/2,size/2]
+      });
+      const marker = L.marker([n.lat,n.lng], {icon}).addTo(mapLayer);
+      marker.bindPopup(`<b style="font-family:Outfit">${n.name}</b><br><span class="coords">${fmtCoord(n.lat)}, ${fmtCoord(n.lng)}</span>${pr?`<br>${pr}`:''}`);
+      marker.bindTooltip(n.name, {permanent:true, direction:'top', offset:[0,-size/2-2], className:'edge-tag'});
+    });
+
+    setTimeout(()=>{ if(leafletMap) leafletMap.invalidateSize(); }, 50);
+  }catch(err){
+    showMapFallback();
+  }
 }
 
 let lastNav = null;
@@ -912,7 +1086,10 @@ function drawActiveRoute(){
   loadRoadNavigation(activePath);
 }
 async function osrmLeg(a,b){
-  const url = 'https://router.project-osrm.org/route/v1/driving/'+a.lng+','+a.lat+';'+b.lng+','+b.lat+'?overview=full&geometries=geojson&steps=true';
+  const direct = 'https://router.project-osrm.org/route/v1/driving/'+a.lng+','+a.lat+';'+b.lng+','+b.lat+'?overview=full&geometries=geojson&steps=true';
+  const url = window.location.protocol === 'file:'
+    ? direct
+    : '/api/route?from='+encodeURIComponent(a.lng+','+a.lat)+'&to='+encodeURIComponent(b.lng+','+b.lat);
   const res = await fetch(url);
   if(!res.ok) throw new Error('osrm');
   const data = await res.json();
@@ -1075,8 +1252,13 @@ document.querySelectorAll('.tabbtn').forEach(btn=>{
     document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById('panel-'+btn.dataset.tab).classList.add('active');
-    if(btn.dataset.tab==='routing' && leafletMap){
-      setTimeout(()=>{ leafletMap.invalidateSize(); if(activePath.length) drawActiveRoute(); }, 80);
+    if(btn.dataset.tab==='routing'){
+      // The map is created only after its panel is visible. Leaflet cannot
+      // measure a map that was initialised inside display:none.
+      setTimeout(()=>{
+        renderGraph();
+        if(leafletMap){ leafletMap.invalidateSize(); if(activePath.length) drawActiveRoute(); }
+      }, 80);
     }
   });
 });
@@ -1098,6 +1280,7 @@ function renderAll(){
 bindPlaceSearch();
 if(!loadState()) resetZones(true);
 renderAll();
+hydrateBackend();
 window.addEventListener('resize', function(){
   if(leafletMap){ leafletMap.invalidateSize(); }
 });
